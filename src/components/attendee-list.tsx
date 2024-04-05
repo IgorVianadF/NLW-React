@@ -13,40 +13,89 @@ import { IconButton } from "./icon-button";
 import { Table } from "./table/table";
 import { TableHeader } from "./table/table-header";
 import { TableCell } from "./table/table-cell";
-import { ChangeEvent, useState } from "react";
-import { attendees } from "../data/attendees";
+import { ChangeEvent, useEffect, useState } from "react";
 
 dayjs.extend(relativeTime);
 dayjs.locale("pt-br");
 
+interface Attendee {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: string;
+  checkedInAt: string | null;
+}
+
 export function AttendeeList() {
-  const lastPage = Math.ceil(attendees.length / 10);
-  const [valorDoInput, alteraValorDoinput] = useState("");
-  const [page, setPage] = useState(1);
+  const [valorDoInput, alteraValorDoinput] = useState(() => {
+    const url = new URL(window.location.toString());
+    if (url.searchParams.has("search")) {
+      return url.searchParams.get("search") ?? "";
+    }
+    return "";
+  });
+  const [page, setPage] = useState(() => {
+    const url = new URL(window.location.toString());
+    if (url.searchParams.has("page")) {
+      return Number(url.searchParams.get("page"));
+    }
+
+    return 1;
+  });
+  const [total, setTotal] = useState(0);
+  const [attendees, setAttendees] = useState<Attendee[]>([]);
+  const lastPage = Math.ceil(total / 10);
+
+  useEffect(() => {
+    const url = new URL(
+      "http://localhost:3333/events/9e9bd979-9d10-4915-b339-3786b1634f33/attendees"
+    );
+
+    url.searchParams.set("pageIndex", String(page - 1));
+    if (valorDoInput.length > 0) {
+      url.searchParams.set("query", valorDoInput);
+    }
+    fetch(url)
+      .then((resp) => resp.json())
+      .then((data) => {
+        setAttendees(data.attendees);
+        setTotal(data.total);
+      });
+  }, [page, valorDoInput]);
+
+  function setCurrentPage(page: number) {
+    const url = new URL(window.location.toString());
+    url.searchParams.set("page", String(page));
+    window.history.pushState({}, "", url);
+    setPage(page);
+  }
+
+  function setCurrentSearch(search: string) {
+    const url = new URL(window.location.toString());
+    url.searchParams.set("search", search);
+    window.history.pushState({}, "", url);
+    alteraValorDoinput(search);
+  }
+
   function onSearchInputChanged(event: ChangeEvent<HTMLInputElement>) {
-    alteraValorDoinput(event.target.value);
+    setCurrentSearch(event.target.value);
+    setCurrentPage(1);
   }
 
   function goToFirstPage() {
-    setPage(1);
+    setCurrentPage(1);
   }
 
   function goToLastPage() {
-    setPage(lastPage);
+    setCurrentPage(lastPage);
   }
 
   function goToNextPage() {
-    if (page === lastPage) {
-      return;
-    }
-    setPage(page + 1);
+    setCurrentPage(page + 1);
   }
 
   function goToPreviousPage() {
-    if (page != 1) {
-      setPage(page - 1);
-    }
-    return;
+    setCurrentPage(page - 1);
   }
 
   return (
@@ -57,12 +106,12 @@ export function AttendeeList() {
           <Search className="size-4  text-emerald-300" />
           <input
             onChange={onSearchInputChanged}
-            className="bg-transparent flex-1 outline-none text-sm border-0 p-0"
+            value={valorDoInput}
+            className="bg-transparent flex-1 outline-none text-sm border-0 p-0 focus:ring-0"
             type="text"
             placeholder="Buscar participante..."
           />
         </div>
-        {valorDoInput}
       </div>
 
       <Table>
@@ -70,7 +119,7 @@ export function AttendeeList() {
           <tr className="border-b border-white/10">
             <TableHeader style={{ width: 48 }}>
               <input
-                className="size-4 bg-black/20 rounded border border-white/10 "
+                className="size-4 bg-black/20 rounded border border-white/10 focus:ring-0 focus:outline-none"
                 type="checkbox"
               />
             </TableHeader>
@@ -82,7 +131,7 @@ export function AttendeeList() {
           </tr>
         </thead>
         <tbody>
-          {attendees.slice((page - 1) * 10, page * 10).map((attendee) => {
+          {attendees.map((attendee) => {
             return (
               <tr
                 key={attendee.id}
@@ -90,7 +139,7 @@ export function AttendeeList() {
               >
                 <TableCell className="py-3 px-4 text-sm text-zinc-300">
                   <input
-                    className="size-4 bg-black/20 rounded border border-white/10 "
+                    className="size-4 bg-black/20 rounded border border-white/10 focus:ring-0"
                     type="checkbox"
                     name=""
                     id=""
@@ -107,7 +156,13 @@ export function AttendeeList() {
                 </TableCell>
                 <TableCell>{dayjs().to(attendee.createdAt)}</TableCell>
                 <TableCell>
-                  <TableCell>{dayjs().to(attendee.checkInAt)}</TableCell>
+                  {attendee.checkedInAt === null ? (
+                    <span className="text-zinc-500">
+                      Ainda não fez check-in
+                    </span>
+                  ) : (
+                    dayjs().to(attendee.checkedInAt)
+                  )}
                 </TableCell>
                 <TableCell>
                   <IconButton transparent>
@@ -121,7 +176,7 @@ export function AttendeeList() {
         <tfoot>
           <tr>
             <TableCell colSpan={3}>
-              Mostrando 10 de {attendees.length} itens
+              Mostrando {attendees.length} de {total} itens
             </TableCell>
             <TableCell className="text-right" colSpan={3}>
               <div className="inline-flex items-center gap-8 ">
